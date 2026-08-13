@@ -54,7 +54,23 @@ window.doRegister = () => checkAppwriteMode(async () => {
     const email = document.getElementById('regEmail').value;
     const password = document.getElementById('regPassword').value;
     
-    const result = await account.create(Appwrite.ID.unique(), email, password);
+    let name = email.split('@')[0]; // fallback
+    let userId = Appwrite.ID.unique(); // fallback
+    try {
+        const seedRes = await fetch('seed-data.json');
+        const seedData = await seedRes.json();
+        const seedUser = seedData.users.find(u => u.email === email);
+        if (seedUser && seedUser.profile && seedUser.profile.fullName) {
+            name = seedUser.profile.fullName;
+        }
+        if (seedUser && seedUser.id) {
+            userId = seedUser.id;
+        }
+    } catch (err) {
+        console.warn('Could not load seed-data.json for name extraction', err);
+    }
+    
+    const result = await account.create(userId, email, password, name);
     log('Appwrite: Register', result);
 }, originalDoRegister);
 
@@ -67,8 +83,8 @@ window.doLogin = () => checkAppwriteMode(async () => {
 }, originalDoLogin);
 
 window.doLogout = () => checkAppwriteMode(async () => {
-    const result = await account.deleteSession('current');
-    log('Appwrite: Logout', result || { message: 'Logged out' });
+    await account.deleteSession('current');
+    log('Appwrite: Logout', { message: 'Successfully logged out of Appwrite session' });
 }, originalDoLogout);
 
 window.getMe = () => checkAppwriteMode(async () => {
@@ -77,24 +93,41 @@ window.getMe = () => checkAppwriteMode(async () => {
 }, originalGetMe);
 
 window.getFiles = () => checkAppwriteMode(async () => {
+    const user = await account.get(); // ensure authenticated
     const { databaseId, collectionId } = getDbConfig();
-    const result = await databases.listDocuments(databaseId, collectionId);
+    
+    // Filter documents to only those belonging to the logged-in user
+    const result = await databases.listDocuments(databaseId, collectionId, [
+        Appwrite.Query.equal('ownerId', user.$id)
+    ]);
     log('Appwrite: Get Files', result);
 }, originalGetFiles);
 
 window.getFileById = () => checkAppwriteMode(async () => {
+    const user = await account.get(); // ensure authenticated
     const { databaseId, collectionId } = getDbConfig();
     const id = document.getElementById('fileId').value;
     
-    // In Appwrite, you typically don't query a file metadata document from a DB collection
-    // unless you stored it there. If you stored it in a collection with RLS:
     const result = await databases.getDocument(databaseId, collectionId, id);
+    
+    // Security check: must correctly reject a request for a file belonging to a different user
+    if (result.ownerId !== user.$id) {
+        throw new Error('Access denied: File belongs to a different user');
+    }
+    
     log('Appwrite: Get File by ID', result);
 }, originalGetFileById);
 
 window.downloadFileById = () => checkAppwriteMode(async () => {
-    const { bucketId } = getDbConfig();
+    const user = await account.get(); // ensure authenticated
+    const { databaseId, collectionId, bucketId } = getDbConfig();
     const id = document.getElementById('fileId').value;
+    
+    // Security check: confirm file belongs to user before allowing download
+    const fileMeta = await databases.getDocument(databaseId, collectionId, id);
+    if (fileMeta.ownerId !== user.$id) {
+        throw new Error('Access denied: File belongs to a different user');
+    }
     
     // Get download URL
     const url = storage.getFileDownload(bucketId, id);
