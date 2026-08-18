@@ -29,6 +29,18 @@ To ensure a user can only access their own file metadata, go to the **Settings**
 2. Under the bucket **Settings > Permissions**, ensure that it is set to use **File Security** (similar to Document Security).
 3. When uploading a file, you apply `Role.user(userId)` to the read and write permissions. This enforces that `storage.getFileDownload` returns a 403 Forbidden if another user attempts to download it.
 
+## 4. Automated Seeding (Optional but Recommended)
+We provide a Node.js script (`seed-appwrite.js`) to automatically populate your Appwrite project with test users from `seed-data.json`, upload mock files to your Storage bucket, and insert metadata into your Database while properly assigning permissions using custom IDs.
+
+1. Generate an API Key in the Appwrite Console (**Overview -> API Keys**). Grant it `users.read`, `users.write`, `documents.read`, `documents.write`, `files.read`, and `files.write` scopes.
+2. In the `appwrite-backend` directory, rename `.env.example` to `.env` and fill in your Appwrite Project ID, Database ID, Collection ID, Bucket ID, and your new API Key.
+3. Install dependencies and run the script:
+   ```bash
+   cd appwrite-backend
+   npm install
+   node seed-appwrite.js
+   ```
+
 ## What Appwrite Handled Automatically
 - Password hashing (Argon2 by default)
 - Session token management and invalidation
