@@ -53,7 +53,7 @@ It features two implementations:
 
 ### Appwrite Backend Setup
 
-Please see [`appwrite-backend/setup-appwrite.md`](appwrite-backend/setup-appwrite.md) for detailed instructions on configuring the Appwrite Console to mirror the required schemas and security rules. Once configured, open `public/index.html`, select "Appwrite", and enter your configuration details.
+Please see [`appwrite-backend/setup-appwrite.md`](appwrite-backend/setup-appwrite.md) for detailed instructions on configuring the Appwrite Console to mirror the required schemas and security rules, **and how to use the automated seeding script** (`seed-appwrite.js`) to populate your Appwrite database. Once configured and seeded, serve and open the frontend client (e.g. `npx serve appwrite-backend`), select "Appwrite", and enter your configuration details.
 
 ---
 
