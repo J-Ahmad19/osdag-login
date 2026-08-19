@@ -76,22 +76,11 @@ async function login(req, res) {
     // Store Refresh Token in Redis
     await redisClient.setEx(`refresh:${refreshToken}`, REFRESH_TOKEN_EXPIRY_SECONDS, user.id);
 
-    // Set HttpOnly Cookies
-    res.cookie('accessToken', accessToken, {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: 'strict',
-      maxAge: ACCESS_TOKEN_EXPIRY_SECONDS * 1000
-    });
-    res.cookie('refreshToken', refreshToken, {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: 'strict',
-      maxAge: REFRESH_TOKEN_EXPIRY_SECONDS * 1000
-    });
-
+    // Provide legacy `token` field for compatibility with the simple index.html client
     res.status(200).json({ 
-      message: 'Logged in successfully',
+      accessToken, 
+      refreshToken, 
+      token: accessToken, // for compatibility with current client logic
       user: { id: user.id, email: user.email } 
     });
   } catch (err) {
@@ -101,7 +90,7 @@ async function login(req, res) {
 }
 
 async function refresh(req, res) {
-  const refreshToken = req.cookies.refreshToken;
+  const { refreshToken } = req.body;
   
   if (!refreshToken) {
     return res.status(401).json({ error: 'Refresh token is required' });
@@ -120,14 +109,7 @@ async function refresh(req, res) {
       { expiresIn: ACCESS_TOKEN_EXPIRY }
     );
 
-    res.cookie('accessToken', accessToken, {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: 'strict',
-      maxAge: ACCESS_TOKEN_EXPIRY_SECONDS * 1000
-    });
-
-    res.status(200).json({ message: 'Token refreshed successfully' });
+    res.status(200).json({ accessToken, token: accessToken });
   } catch (err) {
     console.error('Refresh error:', err);
     res.status(500).json({ error: 'Internal server error' });
@@ -136,7 +118,7 @@ async function refresh(req, res) {
 
 async function logout(req, res) {
   const accessToken = req.token; // Extracted by auth middleware
-  const refreshToken = req.cookies.refreshToken;
+  const { refreshToken } = req.body;
 
   try {
     // 1. Blacklist the short-lived access token in Redis to enforce strict server-side logout
@@ -148,10 +130,6 @@ async function logout(req, res) {
     if (refreshToken) {
       await redisClient.del(`refresh:${refreshToken}`);
     }
-
-    // 3. Clear cookies
-    res.clearCookie('accessToken');
-    res.clearCookie('refreshToken');
 
     res.status(200).json({ message: 'Logged out successfully' });
   } catch (err) {

@@ -29,7 +29,7 @@
 <fieldset>
   <legend>Custom backend settings (only used in "Custom REST backend" mode)</legend>
   <label>Base URL <input id="baseUrl" value="http://localhost:3000" size="30"></label>
-  <label><input type="checkbox" id="useCookies" checked> Backend uses cookie sessions (send credentials)</label>
+  <label><input type="checkbox" id="useCookies"> Backend uses cookie sessions (send credentials)</label>
 </fieldset>
 
 <fieldset>
@@ -68,8 +68,9 @@
 </fieldset>
 
 <fieldset>
-  <legend>Session Management</legend>
-  <p>Tokens are now securely managed via HttpOnly cookies! They are completely hidden from the browser UI.</p>
+  <legend>Session tokens (JWT & Refresh)</legend>
+  <label>Access Token (JWT) <input id="token" size="60"></label>
+  <label>Refresh Token <input id="refreshToken" size="60"></label>
   <button onclick="doRefresh()">Refresh Access Token</button>
 </fieldset>
 
@@ -94,7 +95,7 @@
 <script>
 function base() { return document.getElementById('baseUrl').value.replace(/\/$/, ''); }
 function useCookies() { return document.getElementById('useCookies').checked; }
-function tokenVal() { return ''; /* Unused now, managed by cookies */ }
+function tokenVal() { return document.getElementById('token').value.trim(); }
 function log(label, data) {
   document.getElementById('output').textContent = label + '\n\n' + (typeof data === 'string' ? data : JSON.stringify(data, null, 2));
 }
@@ -139,23 +140,38 @@ async function doLogin() {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ email, password })
   });
-  // Cookies handle tokens automatically.
+  // If the backend returns a JWT and Refresh Token, auto-fill them
+  if (result.body && result.body.token) {
+    document.getElementById('token').value = result.body.token;
+  }
+  if (result.body && result.body.refreshToken) {
+    document.getElementById('refreshToken').value = result.body.refreshToken;
+  }
   log('POST /login', result);
 }
 
 async function doLogout() {
+  const refreshToken = document.getElementById('refreshToken') ? document.getElementById('refreshToken').value : '';
   const result = await request('/logout', { 
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' }
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ refreshToken })
   });
+  document.getElementById('token').value = '';
+  if (document.getElementById('refreshToken')) document.getElementById('refreshToken').value = '';
   log('POST /logout', result);
 }
 
 async function doRefresh() {
+  const refreshToken = document.getElementById('refreshToken').value;
   const result = await request('/refresh', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' }
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ refreshToken })
   });
+  if (result.body && result.body.token) {
+    document.getElementById('token').value = result.body.token;
+  }
   log('POST /refresh', result);
 }
 

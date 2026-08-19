@@ -2,19 +2,12 @@ const jwt = require('jsonwebtoken');
 const redisClient = require('../config/redis');
 
 async function authenticate(req, res, next) {
-  let token = req.cookies.accessToken;
-
-  // Fallback to Authorization header for backward compatibility / testing
-  if (!token) {
-    const authHeader = req.headers.authorization;
-    if (authHeader && authHeader.startsWith('Bearer ')) {
-      token = authHeader.split(' ')[1];
-    }
-  }
-
-  if (!token) {
+  const authHeader = req.headers.authorization;
+  if (!authHeader || !authHeader.startsWith('Bearer ')) {
     return res.status(401).json({ error: 'Not authenticated' });
   }
+
+  const token = authHeader.split(' ')[1];
 
   try {
     // 1. Verify JWT signature and expiration statelessly

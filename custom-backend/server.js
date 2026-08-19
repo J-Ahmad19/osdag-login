@@ -1,6 +1,5 @@
 const express = require('express');
 const cors = require('cors');
-const cookieParser = require('cookie-parser');
 const path = require('path');
 require('dotenv').config();
 
@@ -17,7 +16,6 @@ app.use(cors({
   credentials: true
 }));
 app.use(express.json());
-app.use(cookieParser());
 
 // Serve static frontend
 app.use(express.static(path.join(__dirname, '../public')));

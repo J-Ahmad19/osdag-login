@@ -87,7 +87,6 @@ The implementation rigorously follows all mandated security practices:
 1. **Password Hashing:** Passwords are never stored in plaintext or reversibly encrypted. The custom backend uses **bcrypt** with a salt round of 10, while the Appwrite backend natively uses state-of-the-art **Argon2** hashing.
 2. **Generic Error Messages:** The `/login` endpoint always returns a generic `{"error": "Invalid email or password"}` regardless of whether the email exists or the password was incorrect. This prevents username enumeration attacks.
 3. **Rate Limiting:** A robust rate limiter protects the `/login` route. After 5 failed attempts from the same email, the account is temporarily locked out. In the custom backend, this state is tracked optimally in memory using **Upstash Redis**, preventing the database from being overwhelmed during a credential stuffing attack.
-4. **Secure Token Delivery:** The session is securely delivered via `HttpOnly`, `Secure`, and `SameSite=Strict` cookies. The `authenticate` middleware explicitly extracts and validates this cookie on *every single* protected route (`/me`, `/files`, `/files/:id`), ensuring consistent authorization.
 
 ### Reasoning on JWT vs. Session-Based Authentication
 
@@ -139,5 +138,6 @@ Data isolation is handled natively through Appwrite's Row-Level Security (RLS) f
 ### What I Would Improve Given More Time
 
 1. **True Multipart File Uploads:** The current custom backend implementation uses seeded metadata and a mocked download endpoint (`res.send(fakeContent)`). Given more time, I would integrate the `multer` middleware to parse `multipart/form-data`, stream actual file uploads directly to an S3-compatible object storage (like AWS S3 or MinIO) or the local filesystem, and store the resulting URL in the PostgreSQL database.
-2. **Automated CI/CD & Testing:** I would write a comprehensive suite of integration tests using `Jest` and `Supertest` to programmatically assert that the rate limiter, token blacklisting, and RLS isolation work as intended on every single commit. I would also set up GitHub Actions to automatically run these tests.
-3. **OAuth2 / Social Logins:** To reduce friction during onboarding, I would integrate Google and GitHub OAuth providers (which Appwrite supports natively out of the box, and would require `passport.js` in the custom Express backend).
+2. **HttpOnly Cookie Sessions:** Currently, the custom backend expects the session token in the `Authorization: Bearer` header. While this was done for simplicity in the provided HTML testing client, a production-grade web application should deliver the tokens inside `HttpOnly`, `Secure`, and `SameSite=Strict` cookies. This completely mitigates Cross-Site Scripting (XSS) attacks, as malicious JavaScript cannot access the tokens.
+3. **Automated CI/CD & Testing:** I would write a comprehensive suite of integration tests using `Jest` and `Supertest` to programmatically assert that the rate limiter, token blacklisting, and RLS isolation work as intended on every single commit. I would also set up GitHub Actions to automatically run these tests.
+4. **OAuth2 / Social Logins:** To reduce friction during onboarding, I would integrate Google and GitHub OAuth providers (which Appwrite supports natively out of the box, and would require `passport.js` in the custom Express backend).
