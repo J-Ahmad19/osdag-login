@@ -1,9 +1,13 @@
 const bcrypt = require('bcrypt');
 const crypto = require('crypto');
+const jwt = require('jsonwebtoken');
 const db = require('../config/db');
+const redisClient = require('../config/redis');
 const { recordFailedAttempt, resetFailedAttempts } = require('../middleware/rateLimit');
 
-const SESSION_EXPIRY_HOURS = 24;
+const ACCESS_TOKEN_EXPIRY = '15m';
+const ACCESS_TOKEN_EXPIRY_SECONDS = 15 * 60;
+const REFRESH_TOKEN_EXPIRY_SECONDS = 7 * 24 * 60 * 60; // 7 days
 
 async function register(req, res) {
   const { email, password } = req.body;
@@ -59,31 +63,101 @@ async function login(req, res) {
 
     await resetFailedAttempts(email);
 
-    const token = crypto.randomBytes(32).toString('hex');
-    const expiresAt = new Date();
-    expiresAt.setHours(expiresAt.getHours() + SESSION_EXPIRY_HOURS);
-
-    await db.query(
-      'INSERT INTO sessions (token, user_id, expires_at) VALUES ($1, $2, $3)',
-      [token, user.id, expiresAt]
+    // Generate Access Token (JWT)
+    const accessToken = jwt.sign(
+      { userId: user.id },
+      process.env.JWT_SECRET,
+      { expiresIn: ACCESS_TOKEN_EXPIRY }
     );
 
-    res.status(200).json({ token, user: { id: user.id, email: user.email } });
+    // Generate Refresh Token (Opaque)
+    const refreshToken = crypto.randomBytes(40).toString('hex');
+
+    // Store Refresh Token in Redis
+    await redisClient.setEx(`refresh:${refreshToken}`, REFRESH_TOKEN_EXPIRY_SECONDS, user.id);
+
+    // Set HttpOnly Cookies
+    res.cookie('accessToken', accessToken, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'strict',
+      maxAge: ACCESS_TOKEN_EXPIRY_SECONDS * 1000
+    });
+    res.cookie('refreshToken', refreshToken, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'strict',
+      maxAge: REFRESH_TOKEN_EXPIRY_SECONDS * 1000
+    });
+
+    res.status(200).json({ 
+      message: 'Logged in successfully',
+      user: { id: user.id, email: user.email } 
+    });
   } catch (err) {
     console.error('Login error:', err);
     res.status(500).json({ error: 'Internal server error' });
   }
 }
 
-async function logout(req, res) {
-  const token = req.token;
+async function refresh(req, res) {
+  const refreshToken = req.cookies.refreshToken;
+  
+  if (!refreshToken) {
+    return res.status(401).json({ error: 'Refresh token is required' });
+  }
+
   try {
-    await db.query('DELETE FROM sessions WHERE token = $1', [token]);
-    res.status(200).json({ message: 'Logged out' });
+    const userId = await redisClient.get(`refresh:${refreshToken}`);
+    if (!userId) {
+      return res.status(401).json({ error: 'Invalid or expired refresh token' });
+    }
+
+    // Issue a new Access Token
+    const accessToken = jwt.sign(
+      { userId },
+      process.env.JWT_SECRET,
+      { expiresIn: ACCESS_TOKEN_EXPIRY }
+    );
+
+    res.cookie('accessToken', accessToken, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'strict',
+      maxAge: ACCESS_TOKEN_EXPIRY_SECONDS * 1000
+    });
+
+    res.status(200).json({ message: 'Token refreshed successfully' });
+  } catch (err) {
+    console.error('Refresh error:', err);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+}
+
+async function logout(req, res) {
+  const accessToken = req.token; // Extracted by auth middleware
+  const refreshToken = req.cookies.refreshToken;
+
+  try {
+    // 1. Blacklist the short-lived access token in Redis to enforce strict server-side logout
+    if (accessToken) {
+      await redisClient.setEx(`bl:${accessToken}`, ACCESS_TOKEN_EXPIRY_SECONDS, 'revoked');
+    }
+
+    // 2. Delete the refresh token from Redis
+    if (refreshToken) {
+      await redisClient.del(`refresh:${refreshToken}`);
+    }
+
+    // 3. Clear cookies
+    res.clearCookie('accessToken');
+    res.clearCookie('refreshToken');
+
+    res.status(200).json({ message: 'Logged out successfully' });
   } catch (err) {
     console.error('Logout error:', err);
     res.status(500).json({ error: 'Internal server error' });
   }
 }
 
-module.exports = { register, login, logout };
+module.exports = { register, login, refresh, logout };

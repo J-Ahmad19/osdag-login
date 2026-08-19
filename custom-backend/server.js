@@ -1,9 +1,10 @@
 const express = require('express');
 const cors = require('cors');
+const cookieParser = require('cookie-parser');
 const path = require('path');
 require('dotenv').config();
 
-const { register, login, logout } = require('./src/controllers/authController');
+const { register, login, refresh, logout } = require('./src/controllers/authController');
 const { getMe } = require('./src/controllers/userController');
 const { getFiles, getFileById, downloadFileById } = require('./src/controllers/fileController');
 const authenticate = require('./src/middleware/auth');
@@ -16,6 +17,7 @@ app.use(cors({
   credentials: true
 }));
 app.use(express.json());
+app.use(cookieParser());
 
 // Serve static frontend
 app.use(express.static(path.join(__dirname, '../public')));
@@ -23,6 +25,7 @@ app.use(express.static(path.join(__dirname, '../public')));
 // Routes
 app.post('/register', register);
 app.post('/login', checkRateLimit, login);
+app.post('/refresh', refresh);
 app.post('/logout', authenticate, logout);
 
 app.get('/me', authenticate, getMe);

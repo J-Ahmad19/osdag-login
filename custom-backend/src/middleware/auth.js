@@ -1,36 +1,39 @@
-const db = require('../config/db');
+const jwt = require('jsonwebtoken');
+const redisClient = require('../config/redis');
 
 async function authenticate(req, res, next) {
-  const authHeader = req.headers.authorization;
-  if (!authHeader || !authHeader.startsWith('Bearer ')) {
+  let token = req.cookies.accessToken;
+
+  // Fallback to Authorization header for backward compatibility / testing
+  if (!token) {
+    const authHeader = req.headers.authorization;
+    if (authHeader && authHeader.startsWith('Bearer ')) {
+      token = authHeader.split(' ')[1];
+    }
+  }
+
+  if (!token) {
     return res.status(401).json({ error: 'Not authenticated' });
   }
 
-  const token = authHeader.split(' ')[1];
-
   try {
-    const result = await db.query(
-      'SELECT user_id, expires_at FROM sessions WHERE token = $1',
-      [token]
-    );
+    // 1. Verify JWT signature and expiration statelessly
+    const payload = jwt.verify(token, process.env.JWT_SECRET);
 
-    if (result.rows.length === 0) {
-      return res.status(401).json({ error: 'Not authenticated' });
+    // 2. Check if the token was explicitly revoked (blacklisted during logout)
+    const isBlacklisted = await redisClient.get(`bl:${token}`);
+    if (isBlacklisted) {
+      return res.status(401).json({ error: 'Token has been revoked' });
     }
 
-    const session = result.rows[0];
-    if (new Date() > new Date(session.expires_at)) {
-      // Session expired, remove it
-      await db.query('DELETE FROM sessions WHERE token = $1', [token]);
-      return res.status(401).json({ error: 'Not authenticated' });
-    }
-
-    req.userId = session.user_id;
+    req.userId = payload.userId;
     req.token = token;
     next();
   } catch (err) {
-    console.error('Auth error:', err);
-    res.status(500).json({ error: 'Internal server error' });
+    if (err.name === 'TokenExpiredError') {
+      return res.status(401).json({ error: 'Token expired' });
+    }
+    return res.status(401).json({ error: 'Not authenticated' });
   }
 }
 
