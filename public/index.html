@@ -29,7 +29,7 @@
 <fieldset>
   <legend>Custom backend settings (only used in "Custom REST backend" mode)</legend>
   <label>Base URL <input id="baseUrl" value="http://localhost:3000" size="30"></label>
-  <label><input type="checkbox" id="useCookies"> Backend uses cookie sessions (send credentials)</label>
+  <label><input type="checkbox" id="useCookies" checked> Backend uses cookie sessions (send credentials)</label>
 </fieldset>
 
 <fieldset>
@@ -68,8 +68,9 @@
 </fieldset>
 
 <fieldset>
-  <legend>Session token (only needed if backend is JWT/bearer, not cookies)</legend>
-  <label>Token <input id="token" size="60"></label>
+  <legend>Session Management</legend>
+  <p>Tokens are now securely managed via HttpOnly cookies! They are completely hidden from the browser UI.</p>
+  <button onclick="doRefresh()">Refresh Access Token</button>
 </fieldset>
 
 <fieldset>
@@ -93,7 +94,7 @@
 <script>
 function base() { return document.getElementById('baseUrl').value.replace(/\/$/, ''); }
 function useCookies() { return document.getElementById('useCookies').checked; }
-function tokenVal() { return document.getElementById('token').value.trim(); }
+function tokenVal() { return ''; /* Unused now, managed by cookies */ }
 function log(label, data) {
   document.getElementById('output').textContent = label + '\n\n' + (typeof data === 'string' ? data : JSON.stringify(data, null, 2));
 }
@@ -138,17 +139,24 @@ async function doLogin() {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ email, password })
   });
-  // If the backend returns a JWT in the body, auto-fill the token field
-  if (result.body && result.body.token) {
-    document.getElementById('token').value = result.body.token;
-  }
+  // Cookies handle tokens automatically.
   log('POST /login', result);
 }
 
 async function doLogout() {
-  const result = await request('/logout', { method: 'POST' });
-  document.getElementById('token').value = '';
+  const result = await request('/logout', { 
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' }
+  });
   log('POST /logout', result);
+}
+
+async function doRefresh() {
+  const result = await request('/refresh', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' }
+  });
+  log('POST /refresh', result);
 }
 
 async function getMe() {
